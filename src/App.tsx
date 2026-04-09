@@ -21,8 +21,17 @@ function todayISO() {
 }
 function formatDate(dateStr: string) {
   if (!dateStr) return '—';
-  const d = new Date(dateStr + 'T00:00:00');
+  // Handle both ISO strings and YYYY-MM-DD
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function formatTime(dateStr: string) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+function getESTDate() {
+  return new Date().toLocaleDateString("en-US", { timeZone: "America/New_York" });
 }
 function getGreeting() {
   const h = new Date().getHours();
@@ -167,11 +176,10 @@ export default function App() {
     }
     fetchUsers();
 
-    // Subscribe to profile changes across the whole agency
+    // Only re-fetch users list on insert or delete to avoid re-renders when metrics change
     const channel = supabase.channel('profiles-global')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        fetchUsers();
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, () => fetchUsers())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles' }, () => fetchUsers())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -340,12 +348,6 @@ function AgencyOS({ user, toast, setTab }: { user: string; toast: any; setTab: (
   const [showBlockerForm, setShowBlockerForm] = useState(false);
 
   async function fetchAll() {
-    const { data: metrics } = await supabase.from('profiles').select('mrr, calls').eq('username', user).single();
-    if (metrics) {
-      setMrr(metrics.mrr);
-      setCalls(metrics.calls);
-    }
-    
     const { data: leadData } = await supabase.from('leads').select('value').eq('username', user).eq('status', 'closed');
     if (leadData) {
       setClosedRev(leadData.reduce((a, l) => a + (l.value || 0), 0));
@@ -358,8 +360,35 @@ function AgencyOS({ user, toast, setTab }: { user: string; toast: any; setTab: (
     setLoaded(true);
   }
 
+  async function checkAndResetCalls() {
+    const { data: profile } = await supabase.from('profiles').select('*').eq('username', user).single();
+    if (profile) {
+      setMrr(profile.mrr);
+      
+      const todayEST = getESTDate();
+      const lastUpdate = profile.updated_at ? new Date(profile.updated_at) : (profile.created_at ? new Date(profile.created_at) : null);
+      const lastUpdateEST = lastUpdate ? lastUpdate.toLocaleDateString("en-US", { timeZone: "America/New_York" }) : null;
+      
+      if (lastUpdateEST && lastUpdateEST !== todayEST && profile.calls > 0) {
+        const { error } = await supabase.from('profiles').update({ calls: 0 }).eq('username', user);
+        if (!error) {
+          setCalls(0);
+          toast.show("Resetting calls for " + todayEST, "info");
+        } else {
+          setCalls(profile.calls);
+        }
+      } else {
+        setCalls(profile.calls);
+      }
+    }
+    await fetchAll();
+  }
+
   useEffect(() => {
-    fetchAll();
+    async function init() {
+      await checkAndResetCalls();
+    }
+    init();
 
     // Realtime subscription for metrics & blockers
     const metricsChannel = supabase.channel(`metrics-${user}`)
@@ -392,6 +421,21 @@ function AgencyOS({ user, toast, setTab }: { user: string; toast: any; setTab: (
     if (!error) {
       setCalls(n);
       toast.show(`Call #${n} logged!`);
+    }
+  }
+
+  async function resetCalls() {
+    if (calls === 0) {
+      toast.show("Calls are already at 0", "info");
+      return;
+    }
+
+    const { error } = await supabase.from('profiles').update({ calls: 0 }).eq('username', user);
+    if (!error) {
+      setCalls(0);
+      toast.show("Call count reset", "warning");
+    } else {
+      toast.show("Could not reset call count", "warning");
     }
   }
 
@@ -431,6 +475,9 @@ function AgencyOS({ user, toast, setTab }: { user: string; toast: any; setTab: (
         <button className="btn-secondary" onClick={addCall} style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Phone size={16} /> Log Call
         </button>
+        <button className="btn-secondary" onClick={resetCalls} style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--status-danger)" }}>
+          <Trash2 size={16} /> Reset Calls
+        </button>
         <button className="btn-secondary" onClick={() => setTab("crm")} style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Plus size={16} /> Add Lead
         </button>
@@ -455,7 +502,12 @@ function AgencyOS({ user, toast, setTab }: { user: string; toast: any; setTab: (
         <MetricCard label="Current MRR" value={<><AnimatedNumber value={mrr} prefix="$" /></>} icon={<DollarSign size={20} color="#10B981" />} 
           sub={<span style={{color: "var(--accent-cyan)", cursor: "pointer", fontWeight: 500}} onClick={() => setMrrModal(true)}>Update</span>} />
         <MetricCard label="Calls Today" value={<AnimatedNumber value={calls} />} icon={<Phone size={20} color="var(--accent-blue)" />} 
-          sub={<span style={{color: "var(--accent-cyan)", cursor: "pointer", fontWeight: 500}} onClick={addCall}>+ Log Call</span>} />
+          sub={
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--accent-cyan)", cursor: "pointer", fontWeight: 500 }} onClick={addCall}>+ Log Call</span>
+              <span style={{ color: "var(--status-danger)", cursor: "pointer", fontWeight: 500 }} onClick={resetCalls}>Reset</span>
+            </div>
+          } />
         <MetricCard label="Closed Revenue" value={<><AnimatedNumber value={closedRev} prefix="$" /></>} icon={<CheckCircle2 size={20} color="var(--status-success)" />} sub="From deals" />
         <MetricCard label="Gap to Goal" value={<><AnimatedNumber value={gap} prefix="$" /></>} icon={<Activity size={20} color="#F59E0B" />} sub="Remaining" />
       </div>
@@ -574,7 +626,8 @@ function CRM({ user, toast }: { user: string; toast: any }) {
         value: l.value,
         note: l.note,
         dateBooked: l.date_booked,
-        meetingDate: l.meeting_date
+        meetingDate: l.meeting_date,
+        createdAt: l.created_at
       })));
     }
     setLoaded(true);
@@ -709,10 +762,19 @@ function CRM({ user, toast }: { user: string; toast: any }) {
             </div>
             <div>
               <div style={{ fontWeight: 600, color: "var(--text-main)" }}>{l.name} <span className="badge" style={{ marginLeft: 8, fontSize: 10 }}>{l.status}</span></div>
-              <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4 }}>{l.industry} • ${l.value.toLocaleString()}</div>
-              <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>📅 {formatDate(l.dateBooked)}</div>
-                {l.meetingDate && <div style={{ fontSize: 11, color: "var(--accent-cyan)" }}>🎯 {formatDate(l.meetingDate)}</div>}
+              <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4 }}>
+                {l.industry} • ${l.value.toLocaleString()}
+                {l.note && <div style={{ marginTop: 6, padding: "6px 10px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: 12, color: "var(--text-muted)", borderLeft: "2px solid var(--accent-cyan)", fontStyle: "italic" }}>
+                  "{l.note}"
+                </div>}
+              </div>
+              <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                  <Calendar size={12} /> {formatDate(l.dateBooked)} {l.createdAt && <span style={{opacity: 0.6}}>({formatTime(l.createdAt)})</span>}
+                </div>
+                {l.meetingDate && <div style={{ fontSize: 11, color: "var(--accent-cyan)", display: "flex", alignItems: "center", gap: 4 }}>
+                  <Target size={12} /> {formatDate(l.meetingDate)}
+                </div>}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -736,22 +798,32 @@ function TeamBoard({ allUsers, currentUser }: any) {
   const [loaded, setLoaded] = useState(false);
 
   async function loadTeamData() {
-    const results = await Promise.all(allUsers.map(async (u: string) => {
-      const { data: leads } = await supabase.from('leads').select('*').eq('username', u);
-      const { data: metrics } = await supabase.from('profiles').select('*').eq('username', u).single();
-      
-      const teamLeads = leads || [];
-      const teamMetrics = metrics || { mrr: 0, calls: 0 };
-      
-      const closed = teamLeads.filter(l => l.status === "closed");
+    // Optimized: Fetch all profiles and all leads for the whole team in two single queries
+    const [ { data: profileList }, { data: allLeadsList } ] = await Promise.all([
+      supabase.from('profiles').select('*').in('username', allUsers),
+      supabase.from('leads').select('*').in('username', allUsers)
+    ]);
+
+    const todayEST = getESTDate();
+    
+    const results = allUsers.map((u: string) => {
+      const metrics = profileList?.find(p => p.username === u) || { mrr: 0, calls: 0, updated_at: null };
+      const leads = allLeadsList?.filter(l => l.username === u) || [];
+
+      // Determine if calls should be reset based on last update timestamp
+      const lastUpdate = metrics.updated_at ? new Date(metrics.updated_at) : (metrics.created_at ? new Date(metrics.created_at) : null);
+      const lastUpdateEST = lastUpdate ? lastUpdate.toLocaleDateString("en-US", { timeZone: "America/New_York" }) : null;
+      const currentCalls = (lastUpdateEST === todayEST) ? metrics.calls : 0;
+
+      const closed = leads.filter(l => l.status === "closed");
       const closedVal = closed.reduce((a, l) => a + (l.value || 0), 0);
-      const booked = teamLeads.filter(l => l.status === "booked").length;
-      const noshow = teamLeads.filter(l => l.status === "noshow").length;
+      const booked = leads.filter(l => l.status === "booked").length;
+      const noshow = leads.filter(l => l.status === "noshow").length;
       const total = booked + noshow + closed.length;
-      const showRate = total > 0 ? Math.round(((booked + closed.length) / total) * 100) : 0;
+      const showRate = total > 0 ? Math.round(((booked + closed.length) / (booked + noshow + closed.length)) * 100) : 0;
       
-      return { user: u, mrr: teamMetrics.mrr, calls: teamMetrics.calls, closed: closed.length, closedVal, booked, showRate };
-    }));
+      return { user: u, mrr: metrics.mrr, calls: currentCalls, closed: closed.length, closedVal, booked, showRate };
+    });
     
     setStats(results.sort((a, b) => b.closedVal - a.closedVal));
     setLoaded(true);
