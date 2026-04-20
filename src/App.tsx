@@ -30,9 +30,6 @@ function formatTime(dateStr: string) {
   const d = new Date(dateStr);
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
-function getESTDate() {
-  return new Date().toLocaleDateString("en-US", { timeZone: "America/New_York" });
-}
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -348,6 +345,12 @@ function AgencyOS({ user, toast, setTab }: { user: string; toast: any; setTab: (
   const [showBlockerForm, setShowBlockerForm] = useState(false);
 
   async function fetchAll() {
+    const { data: profile } = await supabase.from('profiles').select('mrr, calls').eq('username', user).single();
+    if (profile) {
+      setMrr(profile.mrr);
+      setCalls(profile.calls);
+    }
+
     const { data: leadData } = await supabase.from('leads').select('value').eq('username', user).eq('status', 'closed');
     if (leadData) {
       setClosedRev(leadData.reduce((a, l) => a + (l.value || 0), 0));
@@ -360,35 +363,8 @@ function AgencyOS({ user, toast, setTab }: { user: string; toast: any; setTab: (
     setLoaded(true);
   }
 
-  async function checkAndResetCalls() {
-    const { data: profile } = await supabase.from('profiles').select('*').eq('username', user).single();
-    if (profile) {
-      setMrr(profile.mrr);
-      
-      const todayEST = getESTDate();
-      const lastUpdate = profile.updated_at ? new Date(profile.updated_at) : (profile.created_at ? new Date(profile.created_at) : null);
-      const lastUpdateEST = lastUpdate ? lastUpdate.toLocaleDateString("en-US", { timeZone: "America/New_York" }) : null;
-      
-      if (lastUpdateEST && lastUpdateEST !== todayEST && profile.calls > 0) {
-        const { error } = await supabase.from('profiles').update({ calls: 0 }).eq('username', user);
-        if (!error) {
-          setCalls(0);
-          toast.show("Resetting calls for " + todayEST, "info");
-        } else {
-          setCalls(profile.calls);
-        }
-      } else {
-        setCalls(profile.calls);
-      }
-    }
-    await fetchAll();
-  }
-
   useEffect(() => {
-    async function init() {
-      await checkAndResetCalls();
-    }
-    init();
+    fetchAll();
 
     // Realtime subscription for metrics & blockers
     const metricsChannel = supabase.channel(`metrics-${user}`)
@@ -803,17 +779,10 @@ function TeamBoard({ allUsers, currentUser }: any) {
       supabase.from('profiles').select('*').in('username', allUsers),
       supabase.from('leads').select('*').in('username', allUsers)
     ]);
-
-    const todayEST = getESTDate();
     
     const results = allUsers.map((u: string) => {
-      const metrics = profileList?.find(p => p.username === u) || { mrr: 0, calls: 0, updated_at: null };
+      const metrics = profileList?.find(p => p.username === u) || { mrr: 0, calls: 0 };
       const leads = allLeadsList?.filter(l => l.username === u) || [];
-
-      // Determine if calls should be reset based on last update timestamp
-      const lastUpdate = metrics.updated_at ? new Date(metrics.updated_at) : (metrics.created_at ? new Date(metrics.created_at) : null);
-      const lastUpdateEST = lastUpdate ? lastUpdate.toLocaleDateString("en-US", { timeZone: "America/New_York" }) : null;
-      const currentCalls = (lastUpdateEST === todayEST) ? metrics.calls : 0;
 
       const closed = leads.filter(l => l.status === "closed");
       const closedVal = closed.reduce((a, l) => a + (l.value || 0), 0);
@@ -822,7 +791,7 @@ function TeamBoard({ allUsers, currentUser }: any) {
       const total = booked + noshow + closed.length;
       const showRate = total > 0 ? Math.round(((booked + closed.length) / (booked + noshow + closed.length)) * 100) : 0;
       
-      return { user: u, mrr: metrics.mrr, calls: currentCalls, closed: closed.length, closedVal, booked, showRate };
+      return { user: u, mrr: metrics.mrr, calls: metrics.calls, closed: closed.length, closedVal, booked, showRate };
     });
     
     setStats(results.sort((a, b) => b.closedVal - a.closedVal));
