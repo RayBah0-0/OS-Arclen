@@ -327,7 +327,7 @@ function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError
           <input
             className="input-field"
             type="password"
-            placeholder="ArclenOS2026!"
+            placeholder="Enter passcode"
             value={passcode}
             onChange={e => {
               setPasscode(e.target.value);
@@ -335,7 +335,7 @@ function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError
             }}
             onKeyDown={e => e.key === "Enter" && onLogin()}
             autoFocus
-            autoComplete="current-password"
+            autoComplete="off"
             spellCheck={false}
             style={{ padding: "14px 16px", fontSize: 16, marginBottom: 16 }}
           />
