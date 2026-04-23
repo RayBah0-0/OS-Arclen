@@ -8,6 +8,7 @@ import { supabase } from "./supabase";
 
 // ── Arclen OS Constants ──
 const GOAL = 6000;
+const APP_PASSCODE = "ArclenOS2026!";
 
 // ── Utility functions ──
 function initials(name: string) {
@@ -159,6 +160,8 @@ export default function App() {
   const [user, setUser] = useState<string | null>(null);
   const [tab, setTab] = useState("os");
   const [loginName, setLoginName] = useState("");
+  const [passcode, setPasscode] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [allUsers, setAllUsers] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
@@ -184,7 +187,19 @@ export default function App() {
 
   async function handleLogin() {
     const name = loginName.trim();
-    if (!name) return;
+    if (!passcode.trim()) {
+      setLoginError("Enter the Arclen OS passcode.");
+      return;
+    }
+    if (passcode !== APP_PASSCODE) {
+      setLoginError("Incorrect passcode.");
+      return;
+    }
+    if (!name) {
+      setLoginError("Enter your username.");
+      return;
+    }
+    setLoginError("");
     
     // Check if user exists, if not create them
     const { data, error } = await supabase.from('profiles').select('username').eq('username', name).single();
@@ -202,6 +217,14 @@ export default function App() {
     toast.show(`Welcome back, ${name}!`);
   }
 
+  function handleLockApp() {
+    setUser(null);
+    setTab("os");
+    setLoginName("");
+    setPasscode("");
+    setLoginError("");
+  }
+
   if (isLoading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="animate-fade-in" style={{ opacity: 0.5 }}>Syncing Arclen Cloud...</div>
@@ -209,7 +232,16 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginScreen name={loginName} setName={setLoginName} onLogin={handleLogin} allUsers={allUsers} />;
+    return (
+      <LoginScreen
+        name={loginName}
+        setName={setLoginName}
+        passcode={passcode}
+        setPasscode={setPasscode}
+        onLogin={handleLogin}
+        loginError={loginError}
+      />
+    );
   }
 
   return (
@@ -236,7 +268,7 @@ export default function App() {
         <div style={{ display: "flex", gap: "1rem", alignItems: "center", background: "var(--bg-card)", padding: "0.5rem", borderRadius: "16px", border: "1px solid var(--border-light)", flexWrap: "wrap" }}>
           <NavTabs tab={tab} setTab={setTab} />
           <div style={{ width: "1px", height: "24px", background: "var(--border-light)", margin: "0 4px" }} />
-          <button className="btn-secondary" style={{ padding: "8px 16px", fontSize: "13px" }} onClick={() => setUser(null)}>Switch User</button>
+          <button className="btn-secondary" style={{ padding: "8px 16px", fontSize: "13px" }} onClick={handleLockApp}>Lock App</button>
         </div>
       </div>
 
@@ -278,7 +310,7 @@ function NavTabs({ tab, setTab }: { tab: string, setTab: (v: string)=>void }) {
 }
 
 // ── Login Screen ──
-function LoginScreen({ name, setName, onLogin, allUsers }: any) {
+function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError }: any) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
       <div className="glass-panel animate-fade-in" style={{ padding: "3rem", width: "100%", maxWidth: "440px", borderRadius: "24px" }}>
@@ -286,43 +318,48 @@ function LoginScreen({ name, setName, onLogin, allUsers }: any) {
           <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--accent-gradient)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.5rem", boxShadow: "var(--accent-glow)", overflow: "hidden" }}>
             <img src="/Logo.png" alt="Arclen Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text-main)", marginBottom: 8 }}>Welcome to Arclen</div>
-          <div style={{ fontSize: 14, color: "var(--text-sub)" }}>Enter your name to access the dashboard</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text-main)", marginBottom: 8 }}>Arclen OS Access</div>
+          <div style={{ fontSize: 14, color: "var(--text-sub)" }}>Internal use only. Enter the passcode and your username to continue.</div>
         </div>
         
         <div style={{ marginBottom: "2rem" }}>
+          <label style={{ display: "block", fontSize: 13, color: "var(--text-muted)", marginBottom: 8, fontWeight: 500 }}>PASSCODE</label>
+          <input
+            className="input-field"
+            type="password"
+            placeholder="ArclenOS2026!"
+            value={passcode}
+            onChange={e => {
+              setPasscode(e.target.value);
+              if (loginError) setLoginError("");
+            }}
+            onKeyDown={e => e.key === "Enter" && onLogin()}
+            autoFocus
+            autoComplete="current-password"
+            spellCheck={false}
+            style={{ padding: "14px 16px", fontSize: 16, marginBottom: 16 }}
+          />
           <label style={{ display: "block", fontSize: 13, color: "var(--text-muted)", marginBottom: 8, fontWeight: 500 }}>USERNAME</label>
           <input 
             className="input-field" 
             placeholder="e.g. Rayane" 
             value={name}
-            onChange={e => setName(e.target.value)} 
+            onChange={e => {
+              setName(e.target.value);
+              if (loginError) setLoginError("");
+            }} 
             onKeyDown={e => e.key === "Enter" && onLogin()} 
-            autoFocus 
             style={{ padding: "14px 16px", fontSize: 16, marginBottom: 16 }}
           />
+          {loginError && (
+            <div style={{ fontSize: 13, color: "var(--status-warning)", marginBottom: 12 }}>
+              {loginError}
+            </div>
+          )}
           <button className="btn-primary" style={{ width: "100%", padding: "14px", fontSize: 15 }} onClick={onLogin}>
-            Continue <ArrowRight size={18} />
+            Unlock Arclen OS <ArrowRight size={18} />
           </button>
         </div>
-
-        {allUsers.length > 0 && (
-          <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "1.5rem" }}>
-            <div style={{ fontSize: 11, color: "var(--text-sub)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.5px", textAlign: "center" }}>Or select an account</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-              {allUsers.map((u: string) => (
-                <button 
-                  key={u} 
-                  className="btn-secondary" 
-                  style={{ padding: "6px 14px", borderRadius: "20px", fontSize: 13 }}
-                  onClick={() => { setName(u); }}
-                >
-                  {u}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
