@@ -240,6 +240,7 @@ export default function App() {
         setPasscode={setPasscode}
         onLogin={handleLogin}
         loginError={loginError}
+        setLoginError={setLoginError}
       />
     );
   }
@@ -310,7 +311,7 @@ function NavTabs({ tab, setTab }: { tab: string, setTab: (v: string)=>void }) {
 }
 
 // ── Login Screen ──
-function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError }: any) {
+function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError, setLoginError }: any) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
       <div className="glass-panel animate-fade-in" style={{ padding: "3rem", width: "100%", maxWidth: "440px", borderRadius: "24px" }}>
