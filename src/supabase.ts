@@ -6,6 +6,9 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 // Replicate chainable Supabase query builder using localStorage
 class MockQueryBuilder {
   table: string;
+  operation: 'select' | 'insert' | 'update' | 'delete' = 'select';
+  updateData: any = null;
+  insertRows: any[] = [];
   filters: { field: string; value: any; operator: string }[] = [];
   sortField: string = '';
   sortAscending: boolean = true;
@@ -16,6 +19,7 @@ class MockQueryBuilder {
   }
 
   select(fields: string = '*') {
+    this.operation = 'select';
     return this;
   }
 
@@ -37,6 +41,23 @@ class MockQueryBuilder {
 
   single() {
     this.isSingle = true;
+    return this;
+  }
+
+  insert(rows: any[]) {
+    this.operation = 'insert';
+    this.insertRows = rows;
+    return this;
+  }
+
+  update(updates: any) {
+    this.operation = 'update';
+    this.updateData = updates;
+    return this;
+  }
+
+  delete() {
+    this.operation = 'delete';
     return this;
   }
 
@@ -80,6 +101,59 @@ class MockQueryBuilder {
   async execute() {
     let data = this._getData();
 
+    if (this.operation === 'insert') {
+      const newRows = this.insertRows.map(r => ({
+        id: Math.random().toString(36).substr(2, 9),
+        created_at: new Date().toISOString(),
+        ...r
+      }));
+      data.push(...newRows);
+      this._setData(data);
+      return { data: newRows, error: null };
+    }
+
+    if (this.operation === 'update') {
+      const nextData = data.map(item => {
+        let match = true;
+        for (const filter of this.filters) {
+          if (filter.operator === 'eq' && item[filter.field] !== filter.value) {
+            match = false;
+          } else if (filter.operator === 'in') {
+            const valArray = Array.isArray(filter.value) ? filter.value : [filter.value];
+            if (!valArray.includes(item[filter.field])) {
+              match = false;
+            }
+          }
+        }
+        if (match) {
+          return { ...item, ...this.updateData };
+        }
+        return item;
+      });
+      this._setData(nextData);
+      return { data: nextData, error: null };
+    }
+
+    if (this.operation === 'delete') {
+      const nextData = data.filter(item => {
+        let match = true;
+        for (const filter of this.filters) {
+          if (filter.operator === 'eq' && item[filter.field] !== filter.value) {
+            match = false;
+          } else if (filter.operator === 'in') {
+            const valArray = Array.isArray(filter.value) ? filter.value : [filter.value];
+            if (!valArray.includes(item[filter.field])) {
+              match = false;
+            }
+          }
+        }
+        return !match;
+      });
+      this._setData(nextData);
+      return { data: null, error: null };
+    }
+
+    // Default operation: select
     // Filter
     for (const filter of this.filters) {
       if (filter.operator === 'eq') {
@@ -107,51 +181,6 @@ class MockQueryBuilder {
     }
 
     return { data, error: null };
-  }
-
-  async insert(rows: any[]) {
-    const data = this._getData();
-    const newRows = rows.map(r => ({
-      id: Math.random().toString(36).substr(2, 9),
-      created_at: new Date().toISOString(),
-      ...r
-    }));
-    data.push(...newRows);
-    this._setData(data);
-    return { data: newRows, error: null };
-  }
-
-  async update(updates: any) {
-    const data = this._getData();
-    const nextData = data.map(item => {
-      let match = true;
-      for (const filter of this.filters) {
-        if (filter.operator === 'eq' && item[filter.field] !== filter.value) {
-          match = false;
-        }
-      }
-      if (match) {
-        return { ...item, ...updates };
-      }
-      return item;
-    });
-    this._setData(nextData);
-    return { data: nextData, error: null };
-  }
-
-  async delete() {
-    const data = this._getData();
-    const nextData = data.filter(item => {
-      let match = true;
-      for (const filter of this.filters) {
-        if (filter.operator === 'eq' && item[filter.field] !== filter.value) {
-          match = false;
-        }
-      }
-      return !match;
-    });
-    this._setData(nextData);
-    return { data: null, error: null };
   }
 }
 
