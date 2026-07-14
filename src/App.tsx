@@ -8,7 +8,6 @@ import { supabase } from "./supabase";
 
 // ── Arclen OS Constants ──
 const GOAL = 6000;
-const APP_PASSCODE = "ArclenOS2026!";
 
 // ── Utility functions ──
 function initials(name: string) {
@@ -160,7 +159,6 @@ export default function App() {
   const [user, setUser] = useState<string | null>(null);
   const [tab, setTab] = useState("os");
   const [loginName, setLoginName] = useState("");
-  const [passcode, setPasscode] = useState("");
   const [loginError, setLoginError] = useState("");
   const [allUsers, setAllUsers] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -187,14 +185,6 @@ export default function App() {
 
   async function handleLogin() {
     const name = loginName.trim();
-    if (!passcode.trim()) {
-      setLoginError("Enter the Arclen OS passcode.");
-      return;
-    }
-    if (passcode !== APP_PASSCODE) {
-      setLoginError("Incorrect passcode.");
-      return;
-    }
     if (!name) {
       setLoginError("Enter your username.");
       return;
@@ -221,7 +211,6 @@ export default function App() {
     setUser(null);
     setTab("os");
     setLoginName("");
-    setPasscode("");
     setLoginError("");
   }
 
@@ -236,8 +225,6 @@ export default function App() {
       <LoginScreen
         name={loginName}
         setName={setLoginName}
-        passcode={passcode}
-        setPasscode={setPasscode}
         onLogin={handleLogin}
         loginError={loginError}
         setLoginError={setLoginError}
@@ -311,7 +298,7 @@ function NavTabs({ tab, setTab }: { tab: string, setTab: (v: string)=>void }) {
 }
 
 // ── Login Screen ──
-function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError, setLoginError }: any) {
+function LoginScreen({ name, setName, onLogin, loginError, setLoginError }: any) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem" }}>
       <div className="glass-panel animate-fade-in" style={{ padding: "3rem", width: "100%", maxWidth: "440px", borderRadius: "24px" }}>
@@ -320,26 +307,10 @@ function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError
             <img src="/Logo.png" alt="Arclen Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
           <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text-main)", marginBottom: 8 }}>Arclen OS Access</div>
-          <div style={{ fontSize: 14, color: "var(--text-sub)" }}>Internal use only. Enter the passcode and your username to continue.</div>
+          <div style={{ fontSize: 14, color: "var(--text-sub)" }}>Internal use only. Enter your username to continue.</div>
         </div>
         
         <div style={{ marginBottom: "2rem" }}>
-          <label style={{ display: "block", fontSize: 13, color: "var(--text-muted)", marginBottom: 8, fontWeight: 500 }}>PASSCODE</label>
-          <input
-            className="input-field"
-            type="password"
-            placeholder="Enter passcode"
-            value={passcode}
-            onChange={e => {
-              setPasscode(e.target.value);
-              if (loginError) setLoginError("");
-            }}
-            onKeyDown={e => e.key === "Enter" && onLogin()}
-            autoFocus
-            autoComplete="off"
-            spellCheck={false}
-            style={{ padding: "14px 16px", fontSize: 16, marginBottom: 16 }}
-          />
           <label style={{ display: "block", fontSize: 13, color: "var(--text-muted)", marginBottom: 8, fontWeight: 500 }}>USERNAME</label>
           <input 
             className="input-field" 
@@ -350,6 +321,7 @@ function LoginScreen({ name, setName, passcode, setPasscode, onLogin, loginError
               if (loginError) setLoginError("");
             }} 
             onKeyDown={e => e.key === "Enter" && onLogin()} 
+            autoFocus
             style={{ padding: "14px 16px", fontSize: 16, marginBottom: 16 }}
           />
           {loginError && (
